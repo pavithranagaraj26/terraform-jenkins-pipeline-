@@ -1,0 +1,586 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  annotations:
+    gke.io/cluster: gke://bcm-pcidss-devops-jenkins/us-central1-a/jenkins-anthos
+  labels:
+    control-plane: controller-manager
+  name: asm-system
+---
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.2.5
+    gke.io/cluster: gke://bcm-pcidss-devops-jenkins/us-central1-a/jenkins-anthos
+  creationTimestamp: null
+  name: canonicalservices.anthos.cloud.google.com
+spec:
+  group: anthos.cloud.google.com
+  names:
+    kind: CanonicalService
+    listKind: CanonicalServiceList
+    plural: canonicalservices
+    singular: canonicalservice
+  scope: Namespaced
+  validation:
+    openAPIV3Schema:
+      description: CanonicalService is the Schema for the canonicalservices API
+      properties:
+        apiVersion:
+          description: 'APIVersion defines the versioned schema of this representation
+            of an object. Servers should convert recognized schemas to the latest
+            internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+          type: string
+        kind:
+          description: 'Kind is a string value representing the REST resource this
+            object represents. Servers may infer this from the endpoint the client
+            submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+          type: string
+        metadata:
+          type: object
+        spec:
+          description: CanonicalServiceSpec defines the desired state of CanonicalService
+          properties:
+            description:
+              description: Description of the service
+              maxLength: 500
+              minLength: 0
+              type: string
+            displayName:
+              description: Human-friendly name of the service
+              maxLength: 100
+              minLength: 0
+              type: string
+          type: object
+        status:
+          description: CanonicalServiceStatus defines the observed state of CanonicalService
+          properties:
+            inactiveSince:
+              description: The time that the service was set to Inactive (if the service
+                is Active, will be empty)
+              format: date-time
+              type: string
+            resourceTypes:
+              description: Array of the resource types the service is currently found
+                on
+              items:
+                description: Struct representing the types of resource a Canonical
+                  Service has been run on. It includes information about whether the
+                  resource is currently in use by the service, so that we can track
+                  resources that might still have valuable metrics but are not active.
+                properties:
+                  inactiveSince:
+                    format: date-time
+                    type: string
+                  name:
+                    enum:
+                    - Pod
+                    - WorkloadEntry
+                    type: string
+                  state:
+                    description: CanonicalServiceState tells us whether the service
+                      is currently Active (aka there is at least one Pod or WorkloadEntry
+                      running this service) or Inactive.
+                    enum:
+                    - Active
+                    - Inactive
+                    - Error
+                    type: string
+                required:
+                - name
+                - state
+                type: object
+              type: array
+            resourceVersionWhenBecameInactive:
+              description: The resource version of the Canonical Service resource
+                when it was marked Inactive
+              type: string
+            state:
+              description: Current state of the service
+              enum:
+              - Active
+              - Inactive
+              - Error
+              type: string
+          required:
+          - state
+          type: object
+      type: object
+  version: v1beta1
+  versions:
+  - name: v1beta1
+    served: true
+    storage: true
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  annotations:
+    gke.io/cluster: gke://bcm-pcidss-devops-jenkins/us-central1-a/jenkins-anthos
+  name: canonical-service-account
+  namespace: asm-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  annotations:
+    gke.io/cluster: gke://bcm-pcidss-devops-jenkins/us-central1-a/jenkins-anthos
+  name: canonical-service-leader-election-role
+  namespace: asm-system
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - ""
+  resources:
+  - configmaps/status
+  verbs:
+  - get
+  - update
+  - patch
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  annotations:
+    gke.io/cluster: gke://bcm-pcidss-devops-jenkins/us-central1-a/jenkins-anthos
+  creationTimestamp: null
+  name: canonical-service-manager-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - anthos.cloud.google.com
+  resources:
+  - canonicalservices
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - anthos.cloud.google.com
+  resources:
+  - canonicalservices/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - networking.istio.io
+  resources:
+  - workloadentries
+  verbs:
+  - get
+  - list
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata:
+  annotations:
+    gke.io/cluster: gke://bcm-pcidss-devops-jenkins/us-central1-a/jenkins-anthos
+  name: canonical-service-metrics-reader
+rules:
+- nonResourceURLs:
+  - /metrics
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  annotations:
+    gke.io/cluster: gke://bcm-pcidss-devops-jenkins/us-central1-a/jenkins-anthos
+  name: canonical-service-leader-election-rolebinding
+  namespace: asm-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: canonical-service-leader-election-role
+subjects:
+- kind: ServiceAccount
+  name: canonical-service-account
+  namespace: asm-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  annotations:
+    gke.io/cluster: gke://bcm-pcidss-devops-jenkins/us-central1-a/jenkins-anthos
+  name: canonical-service-manager-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: canonical-service-manager-role
+subjects:
+- kind: ServiceAccount
+  name: canonical-service-account
+  namespace: asm-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  annotations:
+    gke.io/cluster: gke://bcm-pcidss-devops-jenkins/us-central1-a/jenkins-anthos
+  name: canonical-service-proxy-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: canonical-service-proxy-role
+subjects:
+- kind: ServiceAccount
+  name: canonical-service-account
+  namespace: asm-system
+---
+apiVersion: serviceusage.cnrm.cloud.google.com/v1beta1
+kind: Service
+metadata:
+  annotations:
+    cnrm.cloud.google.com/deletion-policy: abandon
+    cnrm.cloud.google.com/disable-dependent-services: "false"
+    gke.io/cluster: bootstrap://
+  name: anthos.googleapis.com
+  namespace: bcm-pcidss-devops-jenkins
+---
+apiVersion: serviceusage.cnrm.cloud.google.com/v1beta1
+kind: Service
+metadata:
+  annotations:
+    cnrm.cloud.google.com/deletion-policy: abandon
+    cnrm.cloud.google.com/disable-dependent-services: "false"
+    gke.io/cluster: bootstrap://
+  name: compute.googleapis.com
+  namespace: bcm-pcidss-devops-jenkins
+---
+apiVersion: serviceusage.cnrm.cloud.google.com/v1beta1
+kind: Service
+metadata:
+  annotations:
+    cnrm.cloud.google.com/deletion-policy: abandon
+    cnrm.cloud.google.com/disable-dependent-services: "false"
+    gke.io/cluster: bootstrap://
+  name: container.googleapis.com
+  namespace: bcm-pcidss-devops-jenkins
+---
+apiVersion: serviceusage.cnrm.cloud.google.com/v1beta1
+kind: Service
+metadata:
+  annotations:
+    cnrm.cloud.google.com/deletion-policy: abandon
+    cnrm.cloud.google.com/disable-dependent-services: "false"
+    gke.io/cluster: bootstrap://
+  name: iamcredentials.googleapis.com
+  namespace: bcm-pcidss-devops-jenkins
+---
+apiVersion: serviceusage.cnrm.cloud.google.com/v1beta1
+kind: Service
+metadata:
+  annotations:
+    cnrm.cloud.google.com/deletion-policy: abandon
+    cnrm.cloud.google.com/disable-dependent-services: "false"
+    gke.io/cluster: bootstrap://
+  name: meshca.googleapis.com
+  namespace: bcm-pcidss-devops-jenkins
+---
+apiVersion: serviceusage.cnrm.cloud.google.com/v1beta1
+kind: Service
+metadata:
+  annotations:
+    cnrm.cloud.google.com/deletion-policy: abandon
+    cnrm.cloud.google.com/disable-dependent-services: "false"
+    gke.io/cluster: bootstrap://
+  name: meshconfig.googleapis.com
+  namespace: bcm-pcidss-devops-jenkins
+---
+apiVersion: serviceusage.cnrm.cloud.google.com/v1beta1
+kind: Service
+metadata:
+  annotations:
+    cnrm.cloud.google.com/deletion-policy: abandon
+    cnrm.cloud.google.com/disable-dependent-services: "false"
+    gke.io/cluster: bootstrap://
+  name: meshtelemetry.googleapis.com
+  namespace: bcm-pcidss-devops-jenkins
+---
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    gke.io/cluster: gke://bcm-pcidss-devops-jenkins/us-central1-a/jenkins-anthos
+  labels:
+    control-plane: controller-manager
+  name: canonical-service-controller-manager-metrics-service
+  namespace: asm-system
+spec:
+  ports:
+  - name: https
+    port: 8443
+    targetPort: https
+  selector:
+    control-plane: controller-manager
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    gke.io/cluster: gke://bcm-pcidss-devops-jenkins/us-central1-a/jenkins-anthos
+  labels:
+    control-plane: controller-manager
+  name: canonical-service-controller-manager
+  namespace: asm-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      control-plane: controller-manager
+  template:
+    metadata:
+      labels:
+        control-plane: controller-manager
+    spec:
+      containers:
+      - args:
+        - --secure-listen-address=0.0.0.0:8443
+        - --upstream=http://127.0.0.1:8080/
+        - --logtostderr=true
+        - --v=10
+        image: gcr.io/kubebuilder/kube-rbac-proxy:v0.5.0
+        name: kube-rbac-proxy
+        ports:
+        - containerPort: 8443
+          name: https
+      - args:
+        - --metrics-addr=127.0.0.1:8080
+        - --enable-leader-election
+        command:
+        - /manager
+        image: gcr.io/gke-release/asm/canonical-service-controller:1.6.11-asm.1
+        name: manager
+        resources:
+          limits:
+            cpu: 100m
+            memory: 100Mi
+          requests:
+            cpu: 100m
+            memory: 20Mi
+      serviceAccountName: canonical-service-account
+      terminationGracePeriodSeconds: 10
+---
+apiVersion: container.cnrm.cloud.google.com/v1beta1
+kind: ContainerCluster
+metadata:
+  annotations:
+    cnrm.cloud.google.com/project-id: bcm-pcidss-devops-jenkins
+    gke.io/cluster: bootstrap://
+  name: jenkins-anthos
+  namespace: bcm-pcidss-devops-jenkins
+spec:
+  addonsConfig:
+    dnsCacheConfig:
+      enabled: false
+    gcePersistentDiskCsiDriverConfig:
+      enabled: false
+    horizontalPodAutoscaling:
+      disabled: false
+    httpLoadBalancing:
+      disabled: false
+    istioConfig:
+      auth: AUTH_MUTUAL_TLS
+      disabled: true
+    networkPolicyConfig:
+      disabled: false
+  clusterAutoscaling:
+    autoscalingProfile: BALANCED
+    enabled: false
+  clusterIpv4Cidr: 192.168.0.0/18
+  databaseEncryption:
+    state: DECRYPTED
+  defaultMaxPodsPerNode: 110
+  enableShieldedNodes: true
+  ipAllocationPolicy:
+    clusterIpv4CidrBlock: 192.168.0.0/18
+    clusterSecondaryRangeName: ip-range-pods
+    servicesIpv4CidrBlock: 192.168.64.0/18
+    servicesSecondaryRangeName: ip-range-scv
+  labels:
+    mesh_id: proj-537676479365
+  location: us-central1-a
+  loggingService: logging.googleapis.com/kubernetes
+  maintenancePolicy:
+    dailyMaintenanceWindow:
+      duration: PT4H0M0S
+      startTime: "05:00"
+  masterAuth:
+    clientCertificateConfig:
+      issueClientCertificate: false
+    clusterCaCertificate: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURLekNDQWhPZ0F3SUJBZ0lSQUpQNDJid3ZxT1BLK2VnaGVGalAySXN3RFFZSktvWklodmNOQVFFTEJRQXcKTHpFdE1Dc0dBMVVFQXhNa05UTmlaV1V3TXpRdFl6WXdOeTAwT1RJd0xXSTVNamN0TjJWaU0ySmxPV1l4TkRCbApNQjRYRFRJeE1EWXdNakUxTWpZME1Wb1hEVEkyTURZd01URTJNalkwTVZvd0x6RXRNQ3NHQTFVRUF4TWtOVE5pClpXVXdNelF0WXpZd055MDBPVEl3TFdJNU1qY3ROMlZpTTJKbE9XWXhOREJsTUlJQklqQU5CZ2txaGtpRzl3MEIKQVFFRkFBT0NBUThBTUlJQkNnS0NBUUVBMXJXcUN0RUY1NkRCWndRWHhRYXA4a0lqRWFuM0VsV292cWJhZ2g0bQp5VVlXR3NRdHRadjBoZkFYYmY2aGo2TUF2eUVzam5LZ0pzR3BmR0xyK1VQaFlhaFptU0h3ci8vTDZ1dnNIRDc2Cm9TVXQ2aGsrRUdkbmpIeTJ5Wmc3YThkKys3K1gxZ3VBdU9OaENhUlAzcUNZQ0V4QWRhSnFpZnlhWXdockxwd3AKYk5FcnNlbUt0R0pWOTdyRVdjZjU0Ui9Jc0NDSk0vbFFCM0JwVGpQSXFyTVlsS3dmZUZtUUsvbURSdmdITUtDcgpNemhEeC81WmtyT3JjSkJtcC9mWmxZQzlkOVI3VGZSQU5SbnVWRmEvcDRpUy9wMVpmUmVsL0lCTnd3NnVjTlZYCnBiaEhnNVF5L3VycGhMVTRMeUNwVDZyQzlQeGUyNExqeE40UFhhSkRXbWRvYXdJREFRQUJvMEl3UURBT0JnTlYKSFE4QkFmOEVCQU1DQWdRd0R3WURWUjBUQVFIL0JBVXdBd0VCL3pBZEJnTlZIUTRFRmdRVXdkZTV4YUJ4V0xjNApCSjdzSmdiS2hYL1REcDh3RFFZSktvWklodmNOQVFFTEJRQURnZ0VCQUNJMnE2U1JVM1VvNzUwVUYrZmovTkJkCmZnQWRzTU1mNXFIVzc1ZFUvalVLRVAzVkw3bUZiMk14eldoVDlHMXlmc2dmTTVmaXVVdXlWNkZFRG1pT25zT1QKNk1pUUdLdWd6L1NoekNjcUN0YThoZHBKODFIemh6amNqN3dFeTZKdWNQU0hmbll1aE44ZTVZUk43UDhFY3NPMAp3K2hqRXNkVWRRd3EwOGR3RHIrMWxvcmJNRlBPRVZFZU1UTmVzdGJXamRZWkoyNHZyTTcya21UUmZEbWRidzNZCktkVVpjL252WU1Kajh2SElRMGJwUUZSMkVVUDBrRVVJNnlaOXNjK3p2SjhEWnY4L0NKRG9obHI2YjluUUxrSVoKNk9YMXVTWTlkSzNTMEVkZEJkaFl2NDVjQlhWakhTSzY0cm9GOG5ySXplQUdIK2s4S0RPVkJjQXNKdXNUc2JVPQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==
+  monitoringService: monitoring.googleapis.com/kubernetes
+  networkPolicy:
+    enabled: true
+    provider: CALICO
+  networkRef:
+    external: projects/bcm-pcidss-devops-jenkins/global/networks/jenkins-network-new
+  nodeConfig:
+    diskSizeGb: 20
+    diskType: pd-standard
+    imageType: COS
+    labels:
+      cluster_name: jenkins-anthos
+      node_pool: butler-pool
+    machineType: n1-standard-2
+    metadata:
+      cluster_name: jenkins-anthos
+      disable-legacy-endpoints: "true"
+      node_pool: butler-pool
+    oauthScopes:
+    - https://www.googleapis.com/auth/cloud-platform
+    preemptible: true
+    serviceAccountRef:
+      external: tf-gke-jenkins-anthos-yuvc@bcm-pcidss-devops-jenkins.iam.gserviceaccount.com
+    shieldedInstanceConfig:
+      enableIntegrityMonitoring: true
+    tags:
+    - gke-jenkins-anthos
+    - gke-jenkins-anthos-butler-pool
+    workloadMetadataConfig:
+      nodeMetadata: GKE_METADATA_SERVER
+  nodeVersion: 1.19.10-gke.1600
+  releaseChannel:
+    channel: UNSPECIFIED
+  subnetworkRef:
+    external: projects/bcm-pcidss-devops-jenkins/regions/us-central1/subnetworks/jenkins-subnet-new
+  verticalPodAutoscaling:
+    enabled: false
+  workloadIdentityConfig:
+    identityNamespace: bcm-pcidss-devops-jenkins.svc.id.goog
+status:
+  endpoint: 34.122.206.34
+  instanceGroupUrls:
+  - https://www.googleapis.com/compute/beta/projects/bcm-pcidss-devops-jenkins/zones/us-central1-a/instanceGroups/gke-jenkins-anthos-butler-pool-114f492c-grp
+  labelFingerprint: a9dc16a7
+  masterVersion: 1.19.10-gke.1600
+  servicesIpv4Cidr: 192.168.64.0/18
+---
+apiVersion: container.cnrm.cloud.google.com/v1beta1
+kind: ContainerNodePool
+metadata:
+  annotations:
+    cnrm.cloud.google.com/project-id: bcm-pcidss-devops-jenkins
+    gke.io/cluster: bootstrap://
+  name: butler-pool
+  namespace: bcm-pcidss-devops-jenkins
+spec:
+  autoscaling:
+    maxNodeCount: 2
+    minNodeCount: 1
+  clusterRef:
+    external: jenkins-anthos
+    name: jenkins-anthos
+  initialNodeCount: 1
+  location: us-central1-a
+  management:
+    autoRepair: true
+  maxPodsPerNode: 110
+  nodeConfig:
+    diskSizeGb: 20
+    diskType: pd-standard
+    imageType: COS
+    labels:
+      cluster_name: jenkins-anthos
+      node_pool: butler-pool
+    machineType: n1-standard-2
+    metadata:
+      cluster_name: jenkins-anthos
+      disable-legacy-endpoints: "true"
+      node_pool: butler-pool
+    oauthScopes:
+    - https://www.googleapis.com/auth/cloud-platform
+    preemptible: true
+    serviceAccountRef:
+      external: tf-gke-jenkins-anthos-yuvc@bcm-pcidss-devops-jenkins.iam.gserviceaccount.com
+    shieldedInstanceConfig:
+      enableIntegrityMonitoring: true
+    tags:
+    - gke-jenkins-anthos
+    - gke-jenkins-anthos-butler-pool
+    workloadMetadataConfig:
+      nodeMetadata: GKE_METADATA_SERVER
+  nodeCount: 2
+  nodeLocations:
+  - us-central1-a
+  upgradeSettings:
+    maxSurge: 1
+    maxUnavailable: 0
+  version: 1.19.10-gke.1600
+status:
+  instanceGroupUrls:
+  - https://www.googleapis.com/compute/v1/projects/bcm-pcidss-devops-jenkins/zones/us-central1-a/instanceGroupManagers/gke-jenkins-anthos-butler-pool-114f492c-grp
+---
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+metadata:
+  annotations:
+    gke.io/cluster: gke://bcm-pcidss-devops-jenkins/us-central1-a/jenkins-anthos
+  name: default-istio-operator
+spec:
+  components:
+    pilot:
+      k8s:
+        env:
+        - name: SPIFFE_BUNDLE_ENDPOINTS
+          value: bcm-pcidss-devops-jenkins.svc.id.goog|https://storage.googleapis.com/mesh-ca-resources/spiffe_bundle.json
+        - name: ENABLE_STACKDRIVER_MONITORING
+          value: "true"
+  hub: gcr.io/gke-release/asm
+  meshConfig:
+    defaultConfig:
+      proxyMetadata:
+        GCP_METADATA: bcm-pcidss-devops-jenkins|537676479365|jenkins-anthos|us-central1-a
+        GKE_CLUSTER_URL: https://container.googleapis.com/v1/projects/bcm-pcidss-devops-jenkins/locations/us-central1-a/clusters/jenkins-anthos
+        TRUST_DOMAIN: bcm-pcidss-devops-jenkins.svc.id.goog
+    trustDomainAliases:
+    - bcm-pcidss-devops-jenkins.svc.id.goog
+  profile: asm-gcp
+  tag: 1.6.11-asm.1
+  values:
+    global:
+      meshID: proj-537676479365
+      multiCluster:
+        clusterName: bcm-pcidss-devops-jenkins/us-central1-a/jenkins-anthos
+      sds:
+        token:
+          aud: bcm-pcidss-devops-jenkins.svc.id.goog
+      trustDomain: bcm-pcidss-devops-jenkins.svc.id.goog
