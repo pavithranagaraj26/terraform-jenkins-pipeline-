@@ -16,16 +16,23 @@ data "google_client_config" "current" {}
  *****************************************/
 module "enables-google-apis" {
   source  = "terraform-google-modules/project-factory/google//modules/project_services"
-  version = "6.0.0"
 
-  project_id = var.project_id
-
+  project_id = data.google_client_config.current.project
+  disable_services_on_destroy = false
   activate_apis = [
     "iam.googleapis.com",
     "cloudresourcemanager.googleapis.com",
     "compute.googleapis.com",
     "containerregistry.googleapis.com",
     "container.googleapis.com",
+    "anthos.googleapis.com",
+    "cloudtrace.googleapis.com",
+    "meshca.googleapis.com",
+    "meshtelemetry.googleapis.com",
+    "meshconfig.googleapis.com",
+    "iamcredentials.googleapis.com",
+    "gkeconnect.googleapis.com",
+    "gkehub.googleapis.com",
     "storage-component.googleapis.com",
     "logging.googleapis.com",
     "monitoring.googleapis.com",
